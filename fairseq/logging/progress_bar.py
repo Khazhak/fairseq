@@ -29,6 +29,7 @@ def progress_bar(
     iterator,
     log_format: Optional[str] = None,
     log_interval: int = 100,
+    log_file: Optional[str] = None,
     epoch: Optional[int] = None,
     prefix: Optional[str] = None,
     tensorboard_logdir: Optional[str] = None,
@@ -41,6 +42,10 @@ def progress_bar(
 ):
     if log_format is None:
         log_format = default_log_format
+    if log_file is not None:
+        handler = logging.FileHandler(filename=log_file)
+        logger.addHandler(handler)
+
     if log_format == "tqdm" and not sys.stderr.isatty():
         log_format = "simple"
 
@@ -68,7 +73,7 @@ def progress_bar(
     if wandb_project:
         bar = WandBProgressBarWrapper(bar, wandb_project, run_name=wandb_run_name)
     
-    if aim_repo_path and aim_experiment_name:
+    if aim_repo_path or aim_experiment_name:
         bar = AimProgressBarWrapper(bar, aim_repo_path, aim_experiment_name)
 
     if azureml_logging:
@@ -392,8 +397,7 @@ except ImportError:
 class AimProgressBarWrapper(BaseProgressBar):
     """Log to Aim"""
 
-    def __init__(self, wrapped_bar, aim_repo_path, aim_experiment_name,
-                 system_tracking_interval=None):
+    def __init__(self, wrapped_bar, aim_repo_path, aim_experiment_name):
         self.wrapped_bar = wrapped_bar
         if aim is None:
             logger.warning("aim not found, pip install aim")
@@ -404,15 +408,11 @@ class AimProgressBarWrapper(BaseProgressBar):
         from aim.engine.utils import convert_to_py_number
         self._convert_to_py_number = convert_to_py_number
 
-        self._system_tracking_interval = system_tracking_interval
-        if system_tracking_interval is None:
-            self._system_tracking_interval = DEFAULT_SYSTEM_TRACKING_INT
-
         self._experiment_name = aim_experiment_name
         self._aim_session = Session(
             repo=aim_repo_path,
             experiment=self._experiment_name,
-            system_tracking_interval=self._system_tracking_interval,
+            system_tracking_interval=DEFAULT_SYSTEM_TRACKING_INT,
         )
 
     def __iter__(self):
@@ -426,6 +426,7 @@ class AimProgressBarWrapper(BaseProgressBar):
     def print(self, stats, tag=None, step=None):
         """Print end-of-epoch stats."""
         self._log_to_aim(stats, tag, step)
+        self._aim_session.flush()
         self.wrapped_bar.print(stats, tag=tag, step=step)
 
     def update_config(self, config):
@@ -441,15 +442,18 @@ class AimProgressBarWrapper(BaseProgressBar):
 
         prefix = "" if tag is None else tag
 
-        for key in stats.keys() - {"num_updates"}:
-            value = stats[key]
-            if isinstance(stats[key], AverageMeter):
-                value = stats[key].val
-            value = self._convert_to_py_number(value)
+        stats_keys = stats.keys()
+        trackable_metric_keys = stats_keys - {"num_updates"}
+
+        for metric_key in trackable_metric_keys:
+            metric_value = stats[metric_key]
+            if isinstance(stats[metric_key], AverageMeter):
+                metric_value = stats[metric_key].val
             context = {
                 "subset": prefix
             }
-            self._aim_session.track(value, name=key, step=step, **context)
+            self._aim_session.track(metric_value, name=metric_key,
+                                    step=step, **context)
 
 
 try:
