@@ -263,6 +263,16 @@ def train(
         wandb_run_name=os.environ.get(
             "WANDB_NAME", os.path.basename(cfg.checkpoint.save_dir)
         ),
+        aim_repo_path=(
+            cfg.common.aim_repo_path
+            if distributed_utils.is_master(cfg.distributed_training)
+            else None
+        ),
+        aim_experiment_name=(
+            cfg.common.aim_experiment_name
+            if distributed_utils.is_master(cfg.distributed_training)
+            else None
+        ),
         azureml_logging=(
             cfg.common.azureml_logging
             if distributed_utils.is_master(cfg.distributed_training)
@@ -443,6 +453,16 @@ def validate(
             ),
             wandb_run_name=os.environ.get(
                 "WANDB_NAME", os.path.basename(cfg.checkpoint.save_dir)
+            ),
+            aim_repo_path=(
+                cfg.common.aim_repo_path
+                if distributed_utils.is_master(cfg.distributed_training)
+                else None
+            ),
+            aim_experiment_name=(
+                cfg.common.aim_experiment_name
+                if distributed_utils.is_master(cfg.distributed_training)
+                else None
             ),
         )
 
